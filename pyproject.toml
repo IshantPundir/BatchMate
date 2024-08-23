@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "batchmate"
+version = "0.1.0"
+description = ""
+authors = ["Ishant <ishantpundir202@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+rich = "^13.7.1"
+wandb = "^0.17.7"
+torch = "^2.4.0"
+numpy = "^2.1.0"
+
+[tool.poetry.group.test.dependencies]
+torch = "^2.4.0"
+torchvision = "^0.19.0"
+torchaudio = "^2.4.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
