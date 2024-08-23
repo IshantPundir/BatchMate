@@ -1,0 +1,170 @@
+{
+    "os": "Linux-6.6.42-1-lts-x86_64-with-glibc2.40",
+    "python": "3.12.4",
+    "heartbeatAt": "2024-08-23T14:20:10.943477",
+    "startedAt": "2024-08-23T14:20:09.988888",
+    "docker": null,
+    "cuda": null,
+    "args": [
+        "--wandb"
+    ],
+    "state": "running",
+    "program": "/home/ishant/projects/Osmos/BatchMate/examples/mnist.py",
+    "codePathLocal": "examples/mnist.py",
+    "codePath": "examples/mnist.py",
+    "git": {
+        "remote": "https://github.com/IshantPundir/BatchMate.git",
+        "commit": "b835a079efd364460d778fc3425ef787ab88a40a"
+    },
+    "email": "ishantpundir202@gmail.com",
+    "root": "/home/ishant/projects/Osmos/BatchMate",
+    "host": "Toothless",
+    "username": "ishant",
+    "executable": "/home/ishant/.cache/pypoetry/virtualenvs/batchmate-ZjOyxnM6-py3.12/bin/python",
+    "cpu_count": 12,
+    "cpu_count_logical": 24,
+    "cpu_freq": {
+        "current": 2248.6547916666664,
+        "min": 2200.0,
+        "max": 3800.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2057.161,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 3596.706,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 1866.68,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2789.501,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2197.144,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2028.318,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2504.721,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2199.224,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2056.4,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 1866.295,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2797.027,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2200.0,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2197.156,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2202.562,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2197.527,
+            "min": 2200.0,
+            "max": 3800.0
+        },
+        {
+            "current": 2199.623,
+            "min": 2200.0,
+            "max": 3800.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 48.914520263671875,
+            "used": 36.10432434082031
+        }
+    },
+    "gpu": "Quadro RTX 6000",
+    "gpu_count": 1,
+    "gpu_devices": [
+        {
+            "name": "Quadro RTX 6000",
+            "memory_total": 24159191040
+        }
+    ],
+    "memory": {
+        "total": 62.724693298339844
+    }
+}

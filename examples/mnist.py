@@ -106,6 +106,8 @@ if __name__ == '__main__':
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
+    parser.add_argument('--wandb', action='store_true', default=False,
+                        help='log to WandB')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -148,7 +150,7 @@ if __name__ == '__main__':
     trainer = MNISTrainer(run_name='mnist', model=model,
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
                           optimizer=optimizer, device=device , stop_loss=False,
-                          log_to_wandb=False, wandb_project="MNIST")
+                          log_to_wandb=args.wandb, wandb_project="MNIST")
     
 
     # Let's start the training...
