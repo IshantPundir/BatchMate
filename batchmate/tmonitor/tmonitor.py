@@ -18,7 +18,7 @@ import logging
 from rich.live import Live
 from rich.layout import Layout
 
-from widgets import (LogTable,
+from batchmate.tmonitor.widgets import (LogTable,
                      LogPanel,
                      SystemView,
                      ProgressWindow)
@@ -101,7 +101,7 @@ if __name__ == '__main__':
                 monitor.progress_view.step_epochs()
                 log.info(f"Epoch [bold cyan]{epoch}[/] [green]Done![/]")
 
-        monitor.run(epochs=100)
+        # monitor.run(epochs=100)
     except:
         monitor.close()
 
