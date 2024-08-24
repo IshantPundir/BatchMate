@@ -3,6 +3,8 @@ This is an Example of using Batchmate for training a simple MNIST
 model.
 """
 import argparse
+from typing import Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -42,14 +44,14 @@ class Net(nn.Module):
 class MNISTrainer(BatchMate):
     def __init__(self, run_name: str, model: nn.Module,
                  train_dataloader: DataLoader, test_dataloader: DataLoader,
-                 optimizer: optim.Optimizer,
-                 stop_loss: bool, stop_loss_patience: int = 7, stop_loss_verbose: bool = False, stop_loss_delta: float = 0,
+                 optimizer: optim.Optimizer, scheduler:Optional[optim.Optimizer]=None,
+                 stop_loss: bool=False, stop_loss_patience: int = 7, stop_loss_verbose: bool = False, stop_loss_delta: float = 0,
                  checkpoint_duration: int = 10,
                  output_dir: str | None = None, device: str = "cuda", show_tui: bool = True,
                  log_to_wandb: bool = False, wandb_project="VisionCore",
                  acc_per_batch: bool = True) -> None:
         super().__init__(run_name, model, train_dataloader, test_dataloader,
-                         optimizer, stop_loss, stop_loss_patience, stop_loss_verbose,
+                         optimizer, scheduler, stop_loss, stop_loss_patience, stop_loss_verbose,
                          stop_loss_delta, checkpoint_duration, output_dir, device,
                          show_tui, log_to_wandb, wandb_project, acc_per_batch)
 
@@ -152,7 +154,7 @@ if __name__ == '__main__':
     # Initialize trainer
     trainer = MNISTrainer(run_name='mnist', model=model,
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
-                          optimizer=optimizer, device=device , stop_loss=False,
+                          optimizer=optimizer, scheduler=scheduler, device=device , stop_loss=False,
                           show_tui=args.show_tui, log_to_wandb=args.wandb, wandb_project="MNIST",)
     
 
