@@ -1,6 +1,5 @@
 """
-This is an Example of using Batchmate for training a simple MNIST
-model.
+This is an Example of using Batchmate for training a simple MNIST model.
 """
 import argparse
 from typing import Optional
@@ -10,8 +9,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+from torchvision import datasets, transforms
+from torchvision.utils import make_grid
 
 from batchmate import BatchMate
 from batchmate.utils import Log
@@ -51,8 +51,9 @@ class MNISTrainer(BatchMate):
                  log_to_wandb: bool = False, wandb_project="VisionCore",
                  acc_per_batch: bool = True) -> None:
         super().__init__(run_name, model, train_dataloader, test_dataloader,
-                         optimizer, scheduler, stop_loss, stop_loss_patience, stop_loss_verbose,
-                         stop_loss_delta, checkpoint_duration, output_dir, device,
+                         optimizer, scheduler,
+                         stop_loss, stop_loss_patience, stop_loss_verbose, stop_loss_delta,
+                         checkpoint_duration, output_dir, device,
                          show_tui, log_to_wandb, wandb_project, acc_per_batch)
 
     def save(self, path: str) -> Log:
@@ -73,6 +74,22 @@ class MNISTrainer(BatchMate):
         loss = F.nll_loss(model_output, true_labels)
         return loss
     
+    def epoch_end_callback(self, train_logs: Log, train_results: Log, train_logs_avg: Log,
+                           eval_logs: Log, eval_results: Log, eval_logs_avg: Log) -> None:
+        # Let's log input images and labels to wandb as well
+        input_images = eval_results.model_input
+        true_labels = eval_results.true_labels
+        model_output = eval_results.model_output
+
+        # Take first 5 images and make it a grid along with predicted and true labels;
+        input_images = make_grid(input_images[-1][:5])
+        model_output = model_output[-1][:5].argmax(dim=1, keepdim=False).to('cpu')
+        true_labels = true_labels[-1][:5]
+
+        # Log the images to wandb
+        caption = f"True labels: {true_labels.to('cpu')} | Model output: {model_output.to('cpu')}"        
+        self.log_images(image=input_images, caption=caption)
+
     def batch_inference(self, batch, training: bool) -> Log:
         images, labels = batch
         # Move values to device.
@@ -105,8 +122,6 @@ if __name__ == '__main__':
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
-                        help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
     parser.add_argument('--wandb', action='store_true', default=False,
@@ -150,7 +165,6 @@ if __name__ == '__main__':
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
-    
     # Initialize trainer
     trainer = MNISTrainer(run_name='mnist', model=model,
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
