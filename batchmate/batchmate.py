@@ -1,7 +1,7 @@
 import os
 import inspect
 import logging
-from typing import Tuple
+from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 
 import wandb
@@ -21,16 +21,17 @@ class BatchMate(ABC):
     """
     def __init__(self, run_name:str, model:nn.Module,
                  train_dataloader:DataLoader, test_dataloader:DataLoader,
-                 optimizer:Optimizer,
-                 stop_loss:bool, stop_loss_patience:int=7, stop_loss_verbose:bool=False, stop_loss_delta:float=0.0,
+                 optimizer:Optimizer, scheduler:Optional[Optimizer]=None,
+                 stop_loss:bool=False, stop_loss_patience:int=7, stop_loss_verbose:bool=False, stop_loss_delta:float=0.0,
                  checkpoint_duration:int=10,
                  output_dir:str|None=None, device:str="cuda", show_tui:bool=True,
                  log_to_wandb:bool=False, wandb_project="VisionCore", acc_per_batch:bool=True) -> None:
-        self.model = model.to(device) # Store the model and move it the device;
+        self.device = device
+        self.model = model.to(self.device) # Store the model and move it the device;
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
         self.optimizer = optimizer
-        self.device = device
+        self.scheduler = scheduler
         self.show_tui = show_tui
         self.stop_loss = stop_loss
         self.acc_per_batch = acc_per_batch
@@ -46,7 +47,7 @@ class BatchMate(ABC):
             self.check_stop_loss = StopLoss(patience=stop_loss_patience,
                                       delta=stop_loss_delta,
                                       verbose=stop_loss_verbose)
-
+        
         # Initialize wandb
         if log_to_wandb:
             # TODO: track hyperparameters using config arg
@@ -216,7 +217,7 @@ class BatchMate(ABC):
         pass
     
     def _run(self, epochs:int) -> None:
-        for epoch in range(1, epochs):
+        for epoch in range(1, epochs + 1):
             print(f'Epoch: {epoch}')
             self.epoch_start_callback(epoch=epoch)
     
@@ -249,6 +250,10 @@ class BatchMate(ABC):
                                     eval_logs=eval_logs,
                                     eval_results=eval_results,
                                     eval_logs_avg=eval_logs_avg)
+            
+            # Step the scheduler if provided;
+            if self.scheduler is not None:
+                self.scheduler.step()
             
             # Saving model's checkpoints
             if epoch % self.checkpoint_duration == 0:
