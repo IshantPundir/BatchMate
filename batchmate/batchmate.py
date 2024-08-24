@@ -58,7 +58,8 @@ class BatchMate(ABC):
         main_logger.setLevel(logging.DEBUG)
 
         # Initialize TUI
-        self.tui = TMonitor(logger=main_logger)
+        if self.show_tui is True:
+            self.tui = TMonitor(logger=main_logger)
             
     def _init_output_dir(self, output_dir:str|None, run_name:str) -> Tuple[str, str]:
         """
@@ -94,16 +95,16 @@ class BatchMate(ABC):
         if self.wandb_run is not None:
             self.wandb_run.log(logs)
 
-        self.tui.training_logs.add_data(row_id=epoch, data=logs)
-        # print(f'LOG: {logs}')
+        if self.show_tui is True:
+            self.tui.training_logs.add_data(row_id=epoch, data=logs)
+        else:
+            print(f'LOG: {logs}')
 
     def training_steps(self, loss:torch.Tensor) -> None:
         """
         You may override this method if you need additional steps for training the models
         such as gradient clippping, etc...
         """
-        # Zeroing optimizer's grad
-        self.optimizer.zero_grad()
         # Back-propogation while training;
         loss.backward()
         # Step optimizer
@@ -115,14 +116,18 @@ class BatchMate(ABC):
         run_results = Log(epoch=epoch)
         
         # Update total batches for TUI progress bar!
-        if training is True:
-            self.tui.progress_view.set_train_batch(len(dataloader))
-        else:
-            self.tui.progress_view.set_test_batch(len(dataloader))
+        if self.show_tui is True:
+            if training is True:
+                self.tui.progress_view.set_train_batch(len(dataloader))
+            else:
+                self.tui.progress_view.set_test_batch(len(dataloader))
 
         for batch in dataloader:
             # Get the model's output along with true labels
             # or anything that's necessary to calculate loss and accuracy;
+            if training is True:
+                self.optimizer.zero_grad()
+
             _batch_results = self.batch_inference(batch, training=training)
 
             # Calculate Loss
@@ -144,10 +149,11 @@ class BatchMate(ABC):
             run_results.append_log(_batch_results)
 
             # Step the progress bar
-            if training is True:
-                self.tui.progress_view.step_train_batch()
-            else:
-                self.tui.progress_view.step_test_batch()
+            if self.show_tui:
+                if training is True:
+                    self.tui.progress_view.step_train_batch()
+                else:
+                    self.tui.progress_view.step_test_batch()
 
         return run_logs, run_results
     
@@ -209,51 +215,59 @@ class BatchMate(ABC):
         """Optional method that can be overridden by subclasses."""
         pass
     
+    def _run(self, epochs:int) -> None:
+        for epoch in range(1, epochs):
+            print(f'Epoch: {epoch}')
+            self.epoch_start_callback(epoch=epoch)
+    
+            # Training...
+            self.model.train()
+            train_logs, train_results = self._batch_run(epoch=epoch, dataloader=self.train_dataloader, training=True)
+            train_logs_avg = self._process_batch_run(logs=train_logs, results=train_results)
+            self.log_metric(epoch=epoch, log_type="train", metric=train_logs_avg)
+
+            # Validating...
+            self.model.eval()
+            with torch.no_grad():
+                eval_logs, eval_results = self._batch_run(epoch=epoch, dataloader=self.test_dataloader, training=False)
+                eval_logs_avg = self._process_batch_run(logs=eval_logs, results=eval_results)
+            self.log_metric(epoch=epoch, log_type="eval", metric=eval_logs_avg)
+
+            # Check if StopLoss is enabled and triggered;
+            if self.stop_loss is True:
+                stop_training = self.check_stop_loss(model=self.model,
+                                    optimizer=self.optimizer,
+                                    val_loss=eval_logs_avg.loss)
+                if stop_training is True:
+                    # TODO: Stop the training...
+                    ...
+
+            # Call the epoch_end_callback with training and evaluation batrch run logs.
+            self.epoch_end_callback(train_logs=train_logs,
+                                    train_results=train_results,
+                                    train_logs_avg=train_logs_avg,
+                                    eval_logs=eval_logs,
+                                    eval_results=eval_results,
+                                    eval_logs_avg=eval_logs_avg)
+            
+            # Saving model's checkpoints
+            if epoch % self.checkpoint_duration == 0:
+                checkpoint_name = f"{epoch + 1}_loss:{train_logs_avg.loss}.pth"
+                save_path = os.path.join(self.ckpt_dir, checkpoint_name)
+                self.save(save_path)
+
+            if self.show_tui is True:
+                self.tui.progress_view.step_epochs()
+        
     def run(self, epochs:int) -> None:
         # Set the total numbe of epochs for TUI
-        self.tui.progress_view.set_total_epochs(epochs)
+        if self.show_tui is True:
+            self.tui.progress_view.set_total_epochs(epochs)
 
-        with Live(self.tui.layout, refresh_per_second=4, screen=True, vertical_overflow="visible") as tui_live:
-            for epoch in range(1, epochs):
-                print(f'Epoch: {epoch}')
-                self.epoch_start_callback(epoch=epoch)
-        
-                # Training...
-                self.model.train()
-                train_logs, train_results = self._batch_run(epoch=epoch, dataloader=self.train_dataloader, training=True)
-                train_logs_avg = self._process_batch_run(logs=train_logs, results=train_results)
-                self.log_metric(epoch=epoch, log_type="train", metric=train_logs_avg)
+            with Live(self.tui.layout, refresh_per_second=4, screen=True, vertical_overflow="visible") as tui_live:
+                self._run(epochs=epochs)
 
-                # Validating...
-                self.model.eval()
-                with torch.no_grad():
-                    eval_logs, eval_results = self._batch_run(epoch=epoch, dataloader=self.test_dataloader, training=False)
-                    eval_logs_avg = self._process_batch_run(logs=eval_logs, results=eval_results)
-                self.log_metric(epoch=epoch, log_type="eval", metric=eval_logs_avg)
+            self.tui.close()
 
-                # Check if StopLoss is enabled and triggered;
-                if self.stop_loss is True:
-                    stop_training = self.check_stop_loss(model=self.model,
-                                        optimizer=self.optimizer,
-                                        val_loss=eval_logs_avg.loss)
-                    if stop_training is True:
-                        # TODO: Stop the training...
-                        ...
-
-                # Call the epoch_end_callback with training and evaluation batrch run logs.
-                self.epoch_end_callback(train_logs=train_logs,
-                                        train_results=train_results,
-                                        train_logs_avg=train_logs_avg,
-                                        eval_logs=eval_logs,
-                                        eval_results=eval_results,
-                                        eval_logs_avg=eval_logs_avg)
-                
-                # Saving model's checkpoints
-                if (epoch + 1) % self.checkpoint_duration == 0:
-                    checkpoint_name = f"{epoch + 1}_loss:{train_logs_avg.loss}.pth"
-                    save_path = os.path.join(self.ckpt_dir, checkpoint_name)
-                    self.save(save_path)
-
-                self.tui.progress_view.step_epochs()
-
-        self.tui.close()
+        else:
+            self._run(epochs=epochs)
