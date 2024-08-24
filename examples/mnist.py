@@ -62,6 +62,7 @@ class MNISTrainer(BatchMate):
         pred = model_output.argmax(dim=1, keepdim=True)
 
         correct =  pred.eq(true_labels.view_as(pred)).sum().item()
+        correct = 100. * correct / model_output.shape[0]
         return Log(acc=correct)
     
     def loss_fn(self, results: Log) -> torch.Tensor:
@@ -108,6 +109,8 @@ if __name__ == '__main__':
                         help='For Saving the current Model')
     parser.add_argument('--wandb', action='store_true', default=False,
                         help='log to WandB')
+    parser.add_argument('--show-tui', action='store_true', default=False,
+                        help='Show TUI')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
@@ -150,7 +153,7 @@ if __name__ == '__main__':
     trainer = MNISTrainer(run_name='mnist', model=model,
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
                           optimizer=optimizer, device=device , stop_loss=False,
-                          log_to_wandb=args.wandb, wandb_project="MNIST")
+                          show_tui=args.show_tui, log_to_wandb=args.wandb, wandb_project="MNIST",)
     
 
     # Let's start the training...
