@@ -7,9 +7,9 @@ from abc import ABC, abstractmethod
 import wandb
 import torch
 from torch import nn
+from rich.live import Live
 from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
-from rich.live import Live
 
 from batchmate.utils import Log, StopLoss
 from batchmate.tmonitor import TMonitor
@@ -37,6 +37,10 @@ class BatchMate(ABC):
         self.acc_per_batch = acc_per_batch
         self.checkpoint_duration = checkpoint_duration
 
+        # Initialize TUI
+        if self.show_tui is True:
+            self.tui = TMonitor()
+
         # Create output directory with run_name;
         self.output_dir, self.ckpt_dir = self._init_output_dir(output_dir=output_dir,
                                                                run_name=run_name)
@@ -45,9 +49,8 @@ class BatchMate(ABC):
         if self.stop_loss is True:
             # TODO: pass logger as trac_func arg. 
             self.check_stop_loss = StopLoss(patience=stop_loss_patience,
-                                      delta=stop_loss_delta,
-                                      verbose=stop_loss_verbose)
-        
+                                            delta=stop_loss_delta,
+                                            verbose=stop_loss_verbose)
         # Initialize wandb
         if log_to_wandb:
             # TODO: track hyperparameters using config arg
@@ -55,13 +58,6 @@ class BatchMate(ABC):
             # wandb.watch(model)
         else: self.wandb_run = None
 
-        main_logger = logging.getLogger()
-        main_logger.setLevel(logging.DEBUG)
-
-        # Initialize TUI
-        if self.show_tui is True:
-            self.tui = TMonitor(logger=main_logger)
-            
     def _init_output_dir(self, output_dir:str|None, run_name:str) -> Tuple[str, str]:
         """
         Create a directory tree like this: `output_dir/run_name/checkpoints`
