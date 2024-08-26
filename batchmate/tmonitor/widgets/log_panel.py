@@ -39,7 +39,7 @@ class LogPanel:
         self._log_std = LogReader()
         
         c = Console(file=LogReader())
-        r = RichHandler(console=c, rich_tracebacks=True, tracebacks_show_locals=True,
+        r = RichHandler(console=c, rich_tracebacks=True, tracebacks_show_locals=True)
 
         FORMAT = "%(message)s"
         # FORMAT = "%(asctime)-15s - %(levelname)s - %(message)s"
