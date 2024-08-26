@@ -1,6 +1,7 @@
 """
 This is an Example of using Batchmate for training a simple MNIST model.
 """
+import logging
 import argparse
 from typing import Optional
 
@@ -15,6 +16,8 @@ from torchvision.utils import make_grid
 
 from batchmate import BatchMate
 from batchmate.utils import Log
+
+log = logging.getLogger("rich")
 
 class Net(nn.Module):
     def __init__(self):
@@ -171,6 +174,6 @@ if __name__ == '__main__':
                           optimizer=optimizer, scheduler=scheduler, device=device , stop_loss=False,
                           show_tui=args.show_tui, log_to_wandb=args.wandb, wandb_project="MNIST",)
     
-
+    log.info("Let's start training boiiii!")
     # Let's start the training...
     trainer.run(epochs=args.epochs)
