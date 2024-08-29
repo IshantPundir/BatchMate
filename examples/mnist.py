@@ -15,6 +15,7 @@ from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 
 from batchmate import BatchMate
+from batchmate.batchmate import BatchMateConfig, WandBConfig
 from batchmate.utils import Log
 
 log = logging.getLogger("rich")
@@ -45,20 +46,15 @@ class Net(nn.Module):
         return output
 
 class MNISTrainer(BatchMate):
-    def __init__(self, run_name: str, model: nn.Module,
-                 train_dataloader: DataLoader, test_dataloader: DataLoader,
-                 optimizer: optim.Optimizer, scheduler:Optional[optim.Optimizer]=None,
-                 stop_loss: bool=False, stop_loss_patience: int = 7, stop_loss_verbose: bool = False, stop_loss_delta: float = 0,
-                 checkpoint_duration: int = 10,
-                 output_dir: str | None = None, device: str = "cuda", show_tui: bool = True,
-                 log_to_wandb: bool = False, wandb_project="VisionCore",
-                 acc_per_batch: bool = True) -> None:
-        super().__init__(run_name, model, train_dataloader, test_dataloader,
-                         optimizer, scheduler,
-                         stop_loss, stop_loss_patience, stop_loss_verbose, stop_loss_delta,
-                         checkpoint_duration, output_dir, device,
-                         show_tui, log_to_wandb, wandb_project, acc_per_batch)
-
+    def __init__(self, run_name: str,
+                 model: nn.Module,
+                 device: str,
+                 train_dataloader: DataLoader,
+                 test_dataloader: DataLoader,
+                 optimizer: optim.Optimizer,
+                 **kwargs) -> None:
+        super().__init__(run_name, model, device, train_dataloader, test_dataloader, optimizer, **kwargs)
+    
     def save(self, path: str) -> Log:
         return super().save(path)
     
@@ -169,10 +165,17 @@ if __name__ == '__main__':
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     # Initialize trainer
-    trainer = MNISTrainer(run_name='mnist', model=model,
+    optional_config = {}
+    if args.wandb is True:
+        batchmate_config = BatchMateConfig(
+            wandb_config=WandBConfig(project="MNIST")
+        )
+        
+        optional_config["config"] = batchmate_config
+
+    trainer = MNISTrainer(run_name="MNIST", model=model, device="cuda",
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
-                          optimizer=optimizer, scheduler=scheduler, device=device , stop_loss=False,
-                          show_tui=args.show_tui, log_to_wandb=args.wandb, wandb_project="MNIST",)
+                          optimizer=optimizer, scheduler=scheduler, **optional_config)
     
     log.info("Let's start training boiiii!")
     # Let's start the training...

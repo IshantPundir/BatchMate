@@ -1,6 +1,6 @@
 import os
 import inspect
-import logging
+from dataclasses import dataclass
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 
@@ -14,49 +14,68 @@ from torch.optim.optimizer import Optimizer
 from batchmate.utils import Log, StopLoss
 from batchmate.tmonitor import TMonitor
 
+@dataclass
+class StopLossConfig:
+    patience:int
+    delta:float = 0.0
+    verbos:bool = False
+
+@dataclass
+class WandBConfig:
+    project:str
+
+@dataclass
+class BatchMateConfig:
+    checkpoint_duration:int = 10
+    output_dir:str = ""
+    show_tui:bool = True
+    acc_per_batch:bool = True
+    stop_loss: Optional[StopLossConfig] = None
+    wandb_config: Optional[WandBConfig] = None
+
 class BatchMate(ABC):
     """
     BatchMate is an abstract class that simplifies the training, testing, and monitoring
     of DNN models. 
     """
-    def __init__(self, run_name:str, model:nn.Module,
-                 train_dataloader:DataLoader, test_dataloader:DataLoader,
-                 optimizer:Optimizer, scheduler:Optional[Optimizer]=None,
-                 stop_loss:bool=False, stop_loss_patience:int=7, stop_loss_verbose:bool=False, stop_loss_delta:float=0.0,
-                 checkpoint_duration:int=10,
-                 output_dir:str|None=None, device:str="cuda", show_tui:bool=True,
-                 log_to_wandb:bool=False, wandb_project="VisionCore", acc_per_batch:bool=True) -> None:
+    def __init__(self,
+                 run_name:str,
+                 model:nn.Module,
+                 device:str,
+                 train_dataloader:DataLoader,
+                 test_dataloader:DataLoader,
+                 optimizer:Optimizer,
+                 scheduler:Optional[Optimizer] = None,
+                 config:BatchMateConfig = BatchMateConfig()) -> None:
+        self.model = model.to(device)
         self.device = device
-        self.model = model.to(self.device) # Store the model and move it the device;
+        self.run_name = run_name
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
         self.optimizer = optimizer
         self.scheduler = scheduler
-        self.show_tui = show_tui
-        self.stop_loss = stop_loss
-        self.acc_per_batch = acc_per_batch
-        self.checkpoint_duration = checkpoint_duration
-
-        # Initialize TUI
-        if self.show_tui is True:
-            self.tui = TMonitor()
+        self.config = config
 
         # Create output directory with run_name;
-        self.output_dir, self.ckpt_dir = self._init_output_dir(output_dir=output_dir,
-                                                               run_name=run_name)
-        
+        self.output_dir, self.ckpt_dir = self._init_output_dir(output_dir=self.config.output_dir,
+                                                               run_name=self.run_name)
+
+        # Initialize TUI
+        if self.config.show_tui is True:
+            self.tui = TMonitor()
+
         # Initialize StopLoss if required
-        if self.stop_loss is True:
-            # TODO: pass logger as trac_func arg. 
-            self.check_stop_loss = StopLoss(patience=stop_loss_patience,
-                                            delta=stop_loss_delta,
-                                            verbose=stop_loss_verbose)
+        if self.config.stop_loss is not None:
+            stop_loss_config = self.config.stop_loss
+            self.check_stop_loss = StopLoss(patience=stop_loss_config.patience,
+                                            delta=stop_loss_config.delta,
+                                            verbose=stop_loss_config.verbos)
         # Initialize wandb
-        if log_to_wandb:
-            # TODO: track hyperparameters using config arg
-            self.wandb_run = wandb.init(project=wandb_project, name=run_name)
-            # wandb.watch(model)
-        else: self.wandb_run = None
+        if self.config.wandb_config is not None:
+            wandb_config = self.config.wandb_config
+            self.wandb_run = wandb.init(project=wandb_config.project, name=self.run_name)
+            wandb.watch(model)
+            # TODO: Log config
 
     def _init_output_dir(self, output_dir:str|None, run_name:str) -> Tuple[str, str]:
         """
@@ -79,7 +98,7 @@ class BatchMate(ABC):
     
     def log_images(self, image:torch.Tensor, key:str="images", caption:str="") -> None:
         """ Method to log images to wandb. """
-        if self.wandb_run is None: return
+        if self.config.wandb_config is None: return
         image = wandb.Image(image, caption=caption)
         self.wandb_run.log({key: image})
 
@@ -89,10 +108,10 @@ class BatchMate(ABC):
         logs = metric.log_with_type(ignore_key='epoch')
 
         # Log metric to wandb;
-        if self.wandb_run is not None:
+        if self.config.wandb_config is not None:
             self.wandb_run.log(logs)
 
-        if self.show_tui is True:
+        if self.config.show_tui is True:
             self.tui.training_logs.add_data(row_id=epoch, data=logs)
         else:
             print(f'LOG: {logs}')
@@ -113,7 +132,7 @@ class BatchMate(ABC):
         run_results = Log(epoch=epoch)
         
         # Update total batches for TUI progress bar!
-        if self.show_tui is True:
+        if self.config.show_tui is True:
             if training is True:
                 self.tui.progress_view.set_train_batch(len(dataloader))
             else:
@@ -134,7 +153,7 @@ class BatchMate(ABC):
                 self.training_steps(loss=loss)
 
             # Calculate accuracy if self.acc_per_batch is True
-            if self.acc_per_batch is True:
+            if self.config.acc_per_batch is True:
                 batch_accuracy = self.acc_fn(_batch_results)
                 run_logs.append_log(batch_accuracy)
 
@@ -146,7 +165,7 @@ class BatchMate(ABC):
             run_results.append_log(_batch_results)
 
             # Step the progress bar
-            if self.show_tui:
+            if self.config.show_tui:
                 if training is True:
                     self.tui.progress_view.step_train_batch()
                 else:
@@ -157,7 +176,7 @@ class BatchMate(ABC):
     def _process_batch_run(self, logs:Log, results:Log) -> Log:
         logs_avg = logs.average_all_values()
 
-        if self.acc_per_batch is False:
+        if self.config.acc_per_batch is False:
             # Calculate accuracy from entire train_results;
             acc = self.acc_fn(results)
             logs_avg.append_log(acc)
@@ -231,7 +250,7 @@ class BatchMate(ABC):
             self.log_metric(epoch=epoch, log_type="eval", metric=eval_logs_avg)
 
             # Check if StopLoss is enabled and triggered;
-            if self.stop_loss is True:
+            if self.config.stop_loss is not None:
                 stop_training = self.check_stop_loss(model=self.model,
                                     optimizer=self.optimizer,
                                     val_loss=eval_logs_avg.loss)
@@ -252,17 +271,17 @@ class BatchMate(ABC):
                 self.scheduler.step()
             
             # Saving model's checkpoints
-            if epoch % self.checkpoint_duration == 0:
+            if epoch % self.config.checkpoint_duration == 0:
                 checkpoint_name = f"{epoch + 1}_loss:{train_logs_avg.loss}.pth"
                 save_path = os.path.join(self.ckpt_dir, checkpoint_name)
                 self.save(save_path)
 
-            if self.show_tui is True:
+            if self.config.show_tui is True:
                 self.tui.progress_view.step_epochs()
         
     def run(self, epochs:int) -> None:
         # Set the total numbe of epochs for TUI
-        if self.show_tui is True:
+        if self.config.show_tui is True:
             self.tui.progress_view.set_total_epochs(epochs)
 
             with Live(self.tui.layout, refresh_per_second=4, screen=True, vertical_overflow="visible") as tui_live:
