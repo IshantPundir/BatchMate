@@ -1,9 +1,9 @@
 """
 This is an Example of using Batchmate for training a simple MNIST model.
 """
+import os
 import logging
 import argparse
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -15,10 +15,10 @@ from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 
 from batchmate import BatchMate
-from batchmate.batchmate import BatchMateConfig, WandBConfig
+from batchmate.batchmate import BatchMateConfig, WandBConfig, StopLossConfig
 from batchmate.utils import Log
+from rich.logging import RichHandler
 
-log = logging.getLogger("rich")
 
 class Net(nn.Module):
     def __init__(self):
@@ -50,13 +50,17 @@ class MNISTrainer(BatchMate):
                  model: nn.Module,
                  device: str,
                  train_dataloader: DataLoader,
-                 test_dataloader: DataLoader,
+                 eval_dataloader: DataLoader,
                  optimizer: optim.Optimizer,
                  **kwargs) -> None:
-        super().__init__(run_name, model, device, train_dataloader, test_dataloader, optimizer, **kwargs)
+        super().__init__(run_name, model, device, train_dataloader, eval_dataloader, optimizer, **kwargs)
     
     def save(self, path: str) -> Log:
-        return super().save(path)
+        self.model.eval()
+        torch.save({
+            "model": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict()
+        }, path)
     
     def acc_fn(self, results: Log) -> Log:
         model_output = results.model_output
@@ -105,10 +109,6 @@ class MNISTrainer(BatchMate):
 if __name__ == '__main__':
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch BatchMate MNIST Example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                        help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=14, metavar='N',
                         help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
@@ -117,17 +117,26 @@ if __name__ == '__main__':
                         help='Learning rate step gamma (default: 0.7)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--dry-run', action='store_true', default=False,
-                        help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--save-model', action='store_true', default=False,
-                        help='For Saving the current Model')
     parser.add_argument('--wandb', action='store_true', default=False,
                         help='log to WandB')
-    parser.add_argument('--show-tui', action='store_true', default=False,
-                        help='Show TUI')
+    parser.add_argument('--stop-loss', action='store_true', default=False,
+                        help='Enable stop loss')
+    parser.add_argument('--stop-loss-patience', type=int, default=4,
+                        help='Stop loss patience')
+    
     args = parser.parse_args()
+    # Initialize logger with rich
+    logging.basicConfig(
+        level="NOTSET",
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(rich_tracebacks=True)]
+    )
+
+    log = logging.getLogger("rich")
+
     use_cuda = not args.no_cuda and torch.cuda.is_available()
 
     torch.manual_seed(args.seed)
@@ -145,7 +154,7 @@ if __name__ == '__main__':
 
     # Load the datasets
     train_dataset = datasets.MNIST('./examples/data', train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST('./examples/data', train=False, transform=transform)
+    eval_dataset = datasets.MNIST('./examples/data', train=False, transform=transform)
 
     # Wrap datasets aroud DataLoader
     dataloader_config = {'batch_size': args.batch_size}
@@ -156,7 +165,7 @@ if __name__ == '__main__':
         })
 
     train_dataloader = DataLoader(train_dataset, shuffle=True, **dataloader_config)
-    test_dataloader = DataLoader(test_dataset,  shuffle=False, **dataloader_config)
+    eval_dataloader = DataLoader(eval_dataset,  shuffle=False, **dataloader_config)
 
 
     # Initalize model, optimizer, scheduler, etc...
@@ -166,15 +175,38 @@ if __name__ == '__main__':
 
     # Initialize trainer
     batchmate_config = BatchMateConfig()
-        
+
     if args.wandb is True:
-        batchmate_config.wandb_config = WandBConfig(project="MNIST") 
+        batchmate_config.wandb_config = WandBConfig(project="MNIST")
+    
+    if args.stop_loss is True:
+        batchmate_config.stop_loss = StopLossConfig(
+            patience=args.stop_loss_patience,
+        )
 
     trainer = MNISTrainer(run_name="MNIST", model=model, device="cuda",
-                          train_dataloader=train_dataloader, test_dataloader=test_dataloader,
+                          train_dataloader=train_dataloader, eval_dataloader=eval_dataloader,
                           optimizer=optimizer, scheduler=scheduler, config=batchmate_config)
     
     log.info("Let's start training boiiii!")
     
     # Let's start the training...
-    trainer.run(epochs=args.epochs)
+    input("Press enter to start training...")
+    result = trainer.run(epochs=args.epochs)    
+    log.info("Training finished!")
+
+
+    if args.stop_loss is True:
+        model = result.model
+        optimizer = result.optimizer
+        loss = result.loss
+        
+        # Update model and optimizer in trainer with the best performing models & optimizer
+        trainer.model = model
+        trainer.optimizer = optimizer
+        
+
+    save_path = os.path.join(trainer.output_dir, "model.pth")
+    log.info(f"Saving model to {save_path}")
+    trainer.save(save_path)
+    breakpoint()

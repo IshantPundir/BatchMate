@@ -1,5 +1,6 @@
 import os
 import inspect
+import logging
 from dataclasses import dataclass
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
@@ -7,12 +8,18 @@ from abc import ABC, abstractmethod
 import wandb
 import torch
 from torch import nn
-from rich.live import Live
 from torch.utils.data import DataLoader
 from torch.optim.optimizer import Optimizer
+from rich.progress import (Progress,
+                            SpinnerColumn,
+                            BarColumn,
+                            TaskProgressColumn,
+                            TimeRemainingColumn)
 
-from batchmate.utils import Log, StopLoss
-from batchmate.tmonitor import TMonitor
+from batchmate.utils import Log, StopLoss, TUI
+from batchmate.utils.stop_loss import BestState
+
+log = logging.getLogger('__name__')
 
 @dataclass
 class StopLossConfig:
@@ -28,14 +35,13 @@ class WandBConfig:
 class BatchMateConfig:
     checkpoint_duration:int = 10
     output_dir:str = ""
-    show_tui:bool = True
     acc_per_batch:bool = True
     stop_loss: Optional[StopLossConfig] = None
     wandb_config: Optional[WandBConfig] = None
 
 class BatchMate(ABC):
     """
-    BatchMate is an abstract class that simplifies the training, testing, and monitoring
+    BatchMate is an abstract class that simplifies the training, evaling, and monitoring
     of DNN models. 
     """
     def __init__(self,
@@ -43,7 +49,7 @@ class BatchMate(ABC):
                  model:nn.Module,
                  device:str,
                  train_dataloader:DataLoader,
-                 test_dataloader:DataLoader,
+                 eval_dataloader:DataLoader,
                  optimizer:Optimizer,
                  scheduler:Optional[Optimizer] = None,
                  config:BatchMateConfig = BatchMateConfig()) -> None:
@@ -51,7 +57,7 @@ class BatchMate(ABC):
         self.device = device
         self.run_name = run_name
         self.train_dataloader = train_dataloader
-        self.test_dataloader = test_dataloader
+        self.eval_dataloader = eval_dataloader
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.config = config
@@ -59,10 +65,6 @@ class BatchMate(ABC):
         # Create output directory with run_name;
         self.output_dir, self.ckpt_dir = self._init_output_dir(output_dir=self.config.output_dir,
                                                                run_name=self.run_name)
-
-        # Initialize TUI
-        if self.config.show_tui is True:
-            self.tui = TMonitor()
 
         # Initialize StopLoss if required
         if self.config.stop_loss is not None:
@@ -83,7 +85,7 @@ class BatchMate(ABC):
 
         This returs the path the path to output_dir and ckpt_dir;
         """
-        if output_dir is None:
+        if output_dir is None or output_dir == "":
             # Fetch the path to the file initializing BatchMate;
             stack = inspect.stack()
             caller_frame = stack[-1]
@@ -111,10 +113,7 @@ class BatchMate(ABC):
         if self.config.wandb_config is not None:
             self.wandb_run.log(logs)
 
-        if self.config.show_tui is True:
-            self.tui.training_logs.add_data(row_id=epoch, data=logs)
-        else:
-            print(f'LOG: {logs}')
+        log.info(logs)
 
     def training_steps(self, loss:torch.Tensor) -> None:
         """
@@ -127,16 +126,9 @@ class BatchMate(ABC):
         self.optimizer.step()
 
     
-    def _batch_run(self, epoch:int, dataloader:DataLoader, training:bool=True) -> Tuple[Log, Log]:
+    def _batch_run(self, epoch:int, dataloader:DataLoader, tui:TUI, training:bool=True) -> Tuple[Log, Log]:
         run_logs = Log(epoch=epoch)
         run_results = Log(epoch=epoch)
-        
-        # Update total batches for TUI progress bar!
-        if self.config.show_tui is True:
-            if training is True:
-                self.tui.progress_view.set_train_batch(len(dataloader))
-            else:
-                self.tui.progress_view.set_test_batch(len(dataloader))
 
         for batch in dataloader:
             # Get the model's output along with true labels
@@ -165,11 +157,10 @@ class BatchMate(ABC):
             run_results.append_log(_batch_results)
 
             # Step the progress bar
-            if self.config.show_tui:
-                if training is True:
-                    self.tui.progress_view.step_train_batch()
-                else:
-                    self.tui.progress_view.step_test_batch()
+            if training is True:
+                tui.step_train_batch()
+            else: 
+                tui.step_eval_batch()
 
         return run_logs, run_results
     
@@ -219,7 +210,7 @@ class BatchMate(ABC):
         return
     
     @abstractmethod
-    def save(self, path:str) -> Log:
+    def save(self, path:str) -> None:
         return
     
     def epoch_start_callback(self, epoch:int) -> None:
@@ -231,21 +222,24 @@ class BatchMate(ABC):
         """Optional method that can be overridden by subclasses."""
         pass
     
-    def _run(self, epochs:int) -> None:
+    def _run(self, epochs:int, tui:TUI) -> None|BestState:
+        if self.config.stop_loss is not None:
+            stop_training = False
+
         for epoch in range(1, epochs + 1):
-            print(f'Epoch: {epoch}')
+            log.info(f'Epoch: {epoch}')
             self.epoch_start_callback(epoch=epoch)
     
             # Training...
             self.model.train()
-            train_logs, train_results = self._batch_run(epoch=epoch, dataloader=self.train_dataloader, training=True)
+            train_logs, train_results = self._batch_run(epoch=epoch, dataloader=self.train_dataloader, training=True, tui=tui)
             train_logs_avg = self._process_batch_run(logs=train_logs, results=train_results)
             self.log_metric(epoch=epoch, log_type="train", metric=train_logs_avg)
 
             # Validating...
             self.model.eval()
             with torch.no_grad():
-                eval_logs, eval_results = self._batch_run(epoch=epoch, dataloader=self.test_dataloader, training=False)
+                eval_logs, eval_results = self._batch_run(epoch=epoch, dataloader=self.eval_dataloader, training=False, tui=tui)
                 eval_logs_avg = self._process_batch_run(logs=eval_logs, results=eval_results)
             self.log_metric(epoch=epoch, log_type="eval", metric=eval_logs_avg)
 
@@ -255,8 +249,8 @@ class BatchMate(ABC):
                                     optimizer=self.optimizer,
                                     val_loss=eval_logs_avg.loss)
                 if stop_training is True:
-                    # TODO: Stop the training...
-                    ...
+                    log.info("Stopping training early...")
+                    break
 
             # Call the epoch_end_callback with training and evaluation batrch run logs.
             self.epoch_end_callback(train_logs=train_logs,
@@ -276,18 +270,21 @@ class BatchMate(ABC):
                 save_path = os.path.join(self.ckpt_dir, checkpoint_name)
                 self.save(save_path)
 
-            if self.config.show_tui is True:
-                self.tui.progress_view.step_epochs()
+            # Step epoch bar
+            tui.step_epoch()
         
-    def run(self, epochs:int) -> None:
-        # Set the total numbe of epochs for TUI
-        if self.config.show_tui is True:
-            self.tui.progress_view.set_total_epochs(epochs)
-
-            with Live(self.tui.layout, refresh_per_second=4, screen=True, vertical_overflow="visible") as tui_live:
-                self._run(epochs=epochs)
-
-            self.tui.close()
-
-        else:
-            self._run(epochs=epochs)
+    def run(self, epochs:int) -> None|BestState:
+        with  Progress(
+            "{task.description}",
+            SpinnerColumn(),
+            BarColumn(bar_width=200),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            expand=True,
+        ) as progress:
+            tui = TUI(progress=progress, epochs=epochs,
+                      train_size=len(self.train_dataloader), eval_size=len(self.eval_dataloader))
+            self._run(epochs=epochs, tui=tui)
+            
+        if self.config.stop_loss is not None:
+            return self.check_stop_loss.get_best_state()
