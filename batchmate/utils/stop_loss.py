@@ -1,12 +1,15 @@
 """
 Early stops the training if validation loss doesn't improve after a given patience.
 """
-from typing import Any, Callable
+import logging
 from copy import deepcopy
+from typing import Any, Callable
 
 import numpy as np
 from torch.nn import Module
 from torch.optim.optimizer import Optimizer
+
+log = logging.getLogger(__name__)
 
 class BestState:
     def __init__(self, model:Module, optimizer:Optimizer, loss:float) -> None:
@@ -18,25 +21,22 @@ class StopLoss:
     """
     Stop the training if validation loss doesn't improve after a given patience is exceded.
     """
-    def __init__(self,patience:int=7, verbose:bool=False, delta:float=0.0, trace_func:Callable=print):
+    def __init__(self,patience:int=7, delta:float=0.0,  verbose:bool=False):
         """
         Args:
             patience (int): How long to wait after last time validation loss improved.
                             Default: 7
-            verbose (bool): If True, prints a message for each validation loss improvement. 
-                            Default: False
             delta (float): Minimum change in the monitored quantity to qualify as an improvement.
                             Default: 0
-            trace_func (function): trace print function.
-                            Default: print            
+            verbose (bool): If True, prints a message for each validation loss improvement. 
+                            Default: False
         """
         self.delta = delta
         self.verbose = verbose
         self.patience = patience
-        self.trace_func = trace_func
 
         self.counter = 0
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
         self.best_loss = None
         self.best_score = None
         self.best_model = None
@@ -51,7 +51,7 @@ class StopLoss:
             
         elif score < self.best_score + self.delta:
             self.counter += 1
-            self.trace_func(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            log.warn(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 return True
         else:
@@ -63,7 +63,7 @@ class StopLoss:
         
     def store_best_model(self, val_loss:float, model:Module, optimizer:Optimizer):
         if self.verbose:
-            self.trace_func(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
+            log.warn(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).')
         self.val_loss_min = val_loss
         self.best_model = deepcopy(model)
         self.best_optimizer = deepcopy(optimizer)
