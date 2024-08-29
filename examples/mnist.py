@@ -165,18 +165,16 @@ if __name__ == '__main__':
     scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
 
     # Initialize trainer
-    optional_config = {}
-    if args.wandb is True:
-        batchmate_config = BatchMateConfig(
-            wandb_config=WandBConfig(project="MNIST")
-        )
+    batchmate_config = BatchMateConfig()
         
-        optional_config["config"] = batchmate_config
+    if args.wandb is True:
+        batchmate_config.wandb_config = WandBConfig(project="MNIST") 
 
     trainer = MNISTrainer(run_name="MNIST", model=model, device="cuda",
                           train_dataloader=train_dataloader, test_dataloader=test_dataloader,
-                          optimizer=optimizer, scheduler=scheduler, **optional_config)
+                          optimizer=optimizer, scheduler=scheduler, config=batchmate_config)
     
     log.info("Let's start training boiiii!")
+    
     # Let's start the training...
     trainer.run(epochs=args.epochs)
