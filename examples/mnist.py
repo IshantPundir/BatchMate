@@ -14,9 +14,8 @@ from torch.optim.lr_scheduler import StepLR
 from torchvision import datasets, transforms
 from torchvision.utils import make_grid
 
-from batchmate import BatchMate
-from batchmate.batchmate import BatchMateConfig, WandBConfig, StopLossConfig
 from batchmate.utils import Log
+from batchmate import BatchMate, BatchMateConfig, WandBConfig, StopLossConfig
 from rich.logging import RichHandler
 
 

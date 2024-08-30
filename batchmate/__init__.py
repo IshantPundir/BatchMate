@@ -1,1 +1,1 @@
-from .batchmate import BatchMate
+from .batchmate import BatchMate, BatchMateConfig, WandBConfig, StopLossConfig
